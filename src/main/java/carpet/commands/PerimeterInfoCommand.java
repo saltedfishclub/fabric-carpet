@@ -6,6 +6,7 @@ import carpet.utils.Messenger;
 import carpet.utils.PerimeterDiagnostics;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
@@ -27,7 +28,7 @@ public class PerimeterInfoCommand
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext commandBuildContext)
     {
         LiteralArgumentBuilder<CommandSourceStack> command = literal("perimeterinfo").
-                requires((player) -> CommandHelper.canUseCommand(player, CarpetSettings.commandPerimeterInfo)).
+                requires((player) -> Permissions.check(player,"carpet.command.perimeterinfo",CommandHelper.canUseCommand(player, CarpetSettings.commandPerimeterInfo))).
                 executes( (c) -> perimeterDiagnose(
                         c.getSource(),
                         BlockPos.containing(c.getSource().getPosition()),

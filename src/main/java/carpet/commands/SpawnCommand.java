@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.DimensionArgument;
@@ -42,7 +43,7 @@ public class SpawnCommand
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext commandBuildContext)
     {
         LiteralArgumentBuilder<CommandSourceStack> literalargumentbuilder = literal("spawn").
-                requires((player) -> CommandHelper.canUseCommand(player, CarpetSettings.commandSpawn));
+                requires((player) -> Permissions.check(player, "carpet.command.spawn",CommandHelper.canUseCommand(player, CarpetSettings.commandSpawn)));
 
         literalargumentbuilder.
                 then(literal("list").

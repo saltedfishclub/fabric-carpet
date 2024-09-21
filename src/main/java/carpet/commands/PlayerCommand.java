@@ -16,6 +16,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.minecraft.SharedConstants;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
@@ -51,7 +52,7 @@ public class PlayerCommand
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext commandBuildContext)
     {
         LiteralArgumentBuilder<CommandSourceStack> command = literal("player")
-                .requires((player) -> CommandHelper.canUseCommand(player, CarpetSettings.commandPlayer))
+                .requires((player) -> Permissions.check(player,"carpet.command.player",CommandHelper.canUseCommand(player, CarpetSettings.commandPlayer)))
                 .then(argument("player", StringArgumentType.word())
                         .suggests((c, b) -> suggest(getPlayerSuggestions(c.getSource()), b))
                         .then(literal("stop").executes(manipulation(EntityPlayerActionPack::stopAll)))
