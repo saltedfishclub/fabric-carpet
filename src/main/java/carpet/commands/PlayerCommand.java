@@ -36,6 +36,7 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
+
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -46,13 +47,11 @@ import static net.minecraft.commands.Commands.argument;
 import static net.minecraft.commands.Commands.literal;
 import static net.minecraft.commands.SharedSuggestionProvider.suggest;
 
-public class PlayerCommand
-{
+public class PlayerCommand {
     // TODO: allow any order like execute
-    public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext commandBuildContext)
-    {
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext commandBuildContext) {
         LiteralArgumentBuilder<CommandSourceStack> command = literal("player")
-                .requires((player) -> Permissions.check(player,"carpet.command.player",CommandHelper.canUseCommand(player, CarpetSettings.commandPlayer)))
+                .requires((player) -> Permissions.check(player, "carpet.command.player", CommandHelper.canUseCommand(player, CarpetSettings.commandPlayer)))
                 .then(argument("player", StringArgumentType.word())
                         .suggests((c, b) -> suggest(getPlayerSuggestions(c.getSource()), b))
                         .then(literal("stop").executes(manipulation(EntityPlayerActionPack::stopAll)))
@@ -68,7 +67,7 @@ public class PlayerCommand
                                 .then(argument("slot", IntegerArgumentType.integer(1, 9))
                                         .executes(c -> manipulate(c, ap -> ap.setSlot(IntegerArgumentType.getInteger(c, "slot"))))))
                         .then(literal("kill").executes(PlayerCommand::kill))
-                        .then(literal("shadow"). executes(PlayerCommand::shadow))
+                        .then(literal("shadow").executes(PlayerCommand::shadow))
                         .then(literal("mount").executes(manipulation(ap -> ap.mount(true)))
                                 .then(literal("anything").executes(manipulation(ap -> ap.mount(false)))))
                         .then(literal("dismount").executes(manipulation(EntityPlayerActionPack::dismount)))
@@ -99,25 +98,26 @@ public class PlayerCommand
                                 .then(literal("left").executes(manipulation(ap -> ap.setStrafing(1))))
                                 .then(literal("right").executes(manipulation(ap -> ap.setStrafing(-1))))
                         ).then(literal("spawn").executes(PlayerCommand::spawn)
-                                .then(literal("in").requires((player) -> player.hasPermission(2))
+                                .then(literal("in").requires((player) -> Permissions.check(player, "carpet.command.player.gamemode", player.hasPermission(2)))
                                         .then(argument("gamemode", GameModeArgument.gameMode())
-                                        .executes(PlayerCommand::spawn)))
+                                                .executes(PlayerCommand::spawn)))
                                 .then(literal("at").then(argument("position", Vec3Argument.vec3()).executes(PlayerCommand::spawn)
                                         .then(literal("facing").then(argument("direction", RotationArgument.rotation()).executes(PlayerCommand::spawn)
-                                                .then(literal("in").then(argument("dimension", DimensionArgument.dimension()).executes(PlayerCommand::spawn)
+                                                .then(literal("in")
+                                                        .requires((player) -> Permissions.check(player,"carpet.command.player.dimension",player.hasPermission(4)))
+                                                        .then(argument("dimension", DimensionArgument.dimension()).executes(PlayerCommand::spawn)
                                                         .then(literal("in").requires((player) -> player.hasPermission(2))
                                                                 .then(argument("gamemode", GameModeArgument.gameMode())
-                                                                .executes(PlayerCommand::spawn)
-                                                        )))
-                                        )))
+                                                                        .executes(PlayerCommand::spawn)
+                                                                )))
+                                                )))
                                 ))
                         )
                 );
         dispatcher.register(command);
     }
 
-    private static LiteralArgumentBuilder<CommandSourceStack> makeActionCommand(String actionName, ActionType type)
-    {
+    private static LiteralArgumentBuilder<CommandSourceStack> makeActionCommand(String actionName, ActionType type) {
         return literal(actionName)
                 .executes(manipulation(ap -> ap.start(type, Action.once())))
                 .then(literal("once").executes(manipulation(ap -> ap.start(type, Action.once()))))
@@ -126,8 +126,7 @@ public class PlayerCommand
                         .executes(c -> manipulate(c, ap -> ap.start(type, Action.interval(IntegerArgumentType.getInteger(c, "ticks")))))));
     }
 
-    private static LiteralArgumentBuilder<CommandSourceStack> makeDropCommand(String actionName, boolean dropAll)
-    {
+    private static LiteralArgumentBuilder<CommandSourceStack> makeDropCommand(String actionName, boolean dropAll) {
         return literal(actionName)
                 .then(literal("all").executes(manipulation(ap -> ap.drop(-2, dropAll))))
                 .then(literal("mainhand").executes(manipulation(ap -> ap.drop(-1, dropAll))))
@@ -136,39 +135,32 @@ public class PlayerCommand
                         executes(c -> manipulate(c, ap -> ap.drop(IntegerArgumentType.getInteger(c, "slot"), dropAll))));
     }
 
-    private static Collection<String> getPlayerSuggestions(CommandSourceStack source)
-    {
+    private static Collection<String> getPlayerSuggestions(CommandSourceStack source) {
         Set<String> players = new LinkedHashSet<>(List.of("Steve", "Alex"));
         players.addAll(source.getOnlinePlayerNames());
         return players;
     }
 
-    private static ServerPlayer getPlayer(CommandContext<CommandSourceStack> context)
-    {
+    private static ServerPlayer getPlayer(CommandContext<CommandSourceStack> context) {
         String playerName = StringArgumentType.getString(context, "player");
         MinecraftServer server = context.getSource().getServer();
         return server.getPlayerList().getPlayerByName(playerName);
     }
 
-    private static boolean cantManipulate(CommandContext<CommandSourceStack> context)
-    {
+    private static boolean cantManipulate(CommandContext<CommandSourceStack> context) {
         Player player = getPlayer(context);
         CommandSourceStack source = context.getSource();
-        if (player == null)
-        {
+        if (player == null) {
             Messenger.m(source, "r Can only manipulate existing players");
             return true;
         }
         Player sender = source.getPlayer();
-        if (sender == null)
-        {
+        if (sender == null) {
             return false;
         }
 
-        if (!source.getServer().getPlayerList().isOp(sender.getGameProfile()))
-        {
-            if (sender != player && !(player instanceof EntityPlayerMPFake))
-            {
+        if (!source.getServer().getPlayerList().isOp(sender.getGameProfile())) {
+            if (sender != player && !(player instanceof EntityPlayerMPFake)) {
                 Messenger.m(source, "r Non OP players can't control other real players");
                 return true;
             }
@@ -176,8 +168,7 @@ public class PlayerCommand
         return false;
     }
 
-    private static boolean cantReMove(CommandContext<CommandSourceStack> context)
-    {
+    private static boolean cantReMove(CommandContext<CommandSourceStack> context) {
         if (cantManipulate(context)) return true;
         Player player = getPlayer(context);
         if (player instanceof EntityPlayerMPFake) return false;
@@ -185,69 +176,56 @@ public class PlayerCommand
         return true;
     }
 
-    private static boolean cantSpawn(CommandContext<CommandSourceStack> context)
-    {
+    private static boolean cantSpawn(CommandContext<CommandSourceStack> context) {
         String playerName = StringArgumentType.getString(context, "player");
         MinecraftServer server = context.getSource().getServer();
         PlayerList manager = server.getPlayerList();
 
-        if (manager.getPlayerByName(playerName) != null)
-        {
+        if (manager.getPlayerByName(playerName) != null) {
             Messenger.m(context.getSource(), "r Player ", "rb " + playerName, "r  is already logged on");
             return true;
         }
         GameProfile profile = server.getProfileCache().get(playerName).orElse(null);
-        if (profile == null)
-        {
-            if (!CarpetSettings.allowSpawningOfflinePlayers)
-            {
-                Messenger.m(context.getSource(), "r Player "+playerName+" is either banned by Mojang, or auth servers are down. " +
+        if (profile == null) {
+            if (!CarpetSettings.allowSpawningOfflinePlayers) {
+                Messenger.m(context.getSource(), "r Player " + playerName + " is either banned by Mojang, or auth servers are down. " +
                         "Banned players can only be summoned in Singleplayer and in servers in off-line mode.");
                 return true;
             } else {
                 profile = new GameProfile(UUIDUtil.createOfflinePlayerUUID(playerName), playerName);
             }
         }
-        if (manager.getBans().isBanned(profile))
-        {
+        if (manager.getBans().isBanned(profile)) {
             Messenger.m(context.getSource(), "r Player ", "rb " + playerName, "r  is banned on this server");
             return true;
         }
-        if (manager.isUsingWhitelist() && manager.isWhiteListed(profile) && !context.getSource().hasPermission(2))
-        {
+        if (manager.isUsingWhitelist() && manager.isWhiteListed(profile) && !context.getSource().hasPermission(2)) {
             Messenger.m(context.getSource(), "r Whitelisted players can only be spawned by operators");
             return true;
         }
         return false;
     }
 
-    private static int kill(CommandContext<CommandSourceStack> context)
-    {
+    private static int kill(CommandContext<CommandSourceStack> context) {
         if (cantReMove(context)) return 0;
         getPlayer(context).kill();
         return 1;
     }
 
     @FunctionalInterface
-    interface SupplierWithCSE<T>
-    {
+    interface SupplierWithCSE<T> {
         T get() throws CommandSyntaxException;
     }
 
-    private static <T> T getArgOrDefault(SupplierWithCSE<T> getter, T defaultValue) throws CommandSyntaxException
-    {
-        try
-        {
+    private static <T> T getArgOrDefault(SupplierWithCSE<T> getter, T defaultValue) throws CommandSyntaxException {
+        try {
             return getter.get();
-        }
-        catch (IllegalArgumentException e)
-        {
+        } catch (IllegalArgumentException e) {
             return defaultValue;
         }
     }
 
-    private static int spawn(CommandContext<CommandSourceStack> context) throws CommandSyntaxException
-    {
+    private static int spawn(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         if (cantSpawn(context)) return 0;
 
         CommandSourceStack source = context.getSource();
@@ -265,33 +243,29 @@ public class PlayerCommand
         );
         GameType mode = GameType.CREATIVE;
         boolean flying = false;
-        if (source.getEntity() instanceof ServerPlayer sender)
-        {
+        if (source.getEntity() instanceof ServerPlayer sender) {
             mode = sender.gameMode.getGameModeForPlayer();
             flying = sender.getAbilities().flying;
         }
         try {
             mode = GameModeArgument.getGameMode(context, "gamemode");
-        } catch (IllegalArgumentException notPresent) {}
+        } catch (IllegalArgumentException notPresent) {
+        }
 
-        if (mode == GameType.SPECTATOR)
-        {
+        if (mode == GameType.SPECTATOR) {
             // Force override flying to true for spectator players, or they will fell out of the world.
             flying = true;
-        } else if (mode.isSurvival())
-        {
+        } else if (mode.isSurvival()) {
             // Force override flying to false for survival-like players, or they will fly too
             flying = false;
         }
         String playerName = StringArgumentType.getString(context, "player");
-        if (playerName.length() > maxNameLength(source.getServer()))
-        {
+        if (playerName.length() > maxNameLength(source.getServer())) {
             Messenger.m(source, "rb Player name: " + playerName + " is too long");
             return 0;
         }
 
-        if (!Level.isInSpawnableBounds(BlockPos.containing(pos)))
-        {
+        if (!Level.isInSpawnableBounds(BlockPos.containing(pos))) {
             Messenger.m(source, "rb Player " + playerName + " cannot be placed outside of the world");
             return 0;
         }
@@ -300,35 +274,31 @@ public class PlayerCommand
             Messenger.m(source, "rb Player " + playerName + " doesn't exist and cannot spawn in online mode. " +
                     "Turn the server offline or the allowSpawningOfflinePlayers on to spawn non-existing players");
             return 0;
-        };
+        }
+        ;
         return 1;
     }
 
-    private static int maxNameLength(MinecraftServer server)
-    {
+    private static int maxNameLength(MinecraftServer server) {
         return server.getPort() >= 0 ? SharedConstants.MAX_PLAYER_NAME_LENGTH : 40;
     }
 
-    private static int manipulate(CommandContext<CommandSourceStack> context, Consumer<EntityPlayerActionPack> action)
-    {
+    private static int manipulate(CommandContext<CommandSourceStack> context, Consumer<EntityPlayerActionPack> action) {
         if (cantManipulate(context)) return 0;
         ServerPlayer player = getPlayer(context);
         action.accept(((ServerPlayerInterface) player).getActionPack());
         return 1;
     }
 
-    private static Command<CommandSourceStack> manipulation(Consumer<EntityPlayerActionPack> action)
-    {
+    private static Command<CommandSourceStack> manipulation(Consumer<EntityPlayerActionPack> action) {
         return c -> manipulate(c, action);
     }
 
-    private static int shadow(CommandContext<CommandSourceStack> context)
-    {
+    private static int shadow(CommandContext<CommandSourceStack> context) {
         if (cantManipulate(context)) return 0;
 
         ServerPlayer player = getPlayer(context);
-        if (player instanceof EntityPlayerMPFake)
-        {
+        if (player instanceof EntityPlayerMPFake) {
             Messenger.m(context.getSource(), "r Cannot shadow fake players");
             return 0;
         }
