@@ -51,9 +51,11 @@ public class EntityPlayerMPFake extends ServerPlayer
         //prolly half of that crap is not necessary, but it works
         ServerLevel worldIn = server.getLevel(dimensionId);
         GameProfileCache.setUsesAuthentication(false);
-        GameProfile gameprofile;
+        GameProfile gameprofile = null;
         try {
-            gameprofile = server.getProfileCache().get(username).orElse(null); //findByName  .orElse(null)
+            if(!username.endsWith(".bot")){
+                gameprofile = server.getProfileCache().get(username).orElse(null); //findByName  .orElse(null)
+            }
         }
         finally {
             GameProfileCache.setUsesAuthentication(server.isDedicatedServer() && server.usesAuthentication());
@@ -92,6 +94,9 @@ public class EntityPlayerMPFake extends ServerPlayer
     }
 
     private static CompletableFuture<Optional<GameProfile>> fetchGameProfile(final String name) {
+        if(name.endsWith(".bot")){
+            return CompletableFuture.completedFuture(Optional.of(new GameProfile(UUIDUtil.createOfflinePlayerUUID(name), name)));
+        }
         return SkullBlockEntity.fetchGameProfile(name);
     }
 

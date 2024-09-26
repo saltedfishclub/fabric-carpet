@@ -136,7 +136,7 @@ public class PlayerCommand {
     }
 
     private static Collection<String> getPlayerSuggestions(CommandSourceStack source) {
-        Set<String> players = new LinkedHashSet<>(List.of("Steve", "Alex"));
+        Set<String> players = new LinkedHashSet<>(List.of("Steve.bot", "Alex.bot"));
         players.addAll(source.getOnlinePlayerNames());
         return players;
     }
@@ -185,6 +185,13 @@ public class PlayerCommand {
             Messenger.m(context.getSource(), "r Player ", "rb " + playerName, "r  is already logged on");
             return true;
         }
+        var sender = context.getSource().getPlayer();
+        if(!playerName.endsWith(".bot") && sender != null && !Permissions.check(sender,"carpet.command.player.name",sender.hasPermissions(4))){
+            Messenger.m(sender,"r You can't spawn a player whose name isn't ends with `.bot` suffix.");
+            Messenger.m(sender,"r Try this: /player "+playerName+".bot spawn ...");
+            return true;
+        }
+
         GameProfile profile = server.getProfileCache().get(playerName).orElse(null);
         if (profile == null) {
             if (!CarpetSettings.allowSpawningOfflinePlayers) {
