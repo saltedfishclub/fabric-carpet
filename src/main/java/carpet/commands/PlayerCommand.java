@@ -181,7 +181,13 @@ public class PlayerCommand {
         MinecraftServer server = context.getSource().getServer();
         PlayerList manager = server.getPlayerList();
 
-        if (manager.getPlayerByName(playerName) != null) {
+        if (EntityPlayerMPFake.isSpawningPlayer(playerName))
+        {
+            Messenger.m(context.getSource(), "r Player ", "rb " + playerName, "r  is currently logging on");
+            return true;
+        }
+        if (manager.getPlayerByName(playerName) != null)
+        {
             Messenger.m(context.getSource(), "r Player ", "rb " + playerName, "r  is already logged on");
             return true;
         }
@@ -215,7 +221,8 @@ public class PlayerCommand {
 
     private static int kill(CommandContext<CommandSourceStack> context) {
         if (cantReMove(context)) return 0;
-        getPlayer(context).kill();
+        ServerPlayer player = getPlayer(context);
+        player.kill(player.level());
         return 1;
     }
 
@@ -314,7 +321,7 @@ public class PlayerCommand {
             return 0;
         }
 
-        EntityPlayerMPFake.createShadow(player.server, player);
+        EntityPlayerMPFake.createShadow(player.getServer(), player);
         return 1;
     }
 }

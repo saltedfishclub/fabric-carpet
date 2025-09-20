@@ -2954,7 +2954,7 @@ It returns a `map` with a report indicating how many chunks were affected, and h
 
 Adds a chunk ticket at a position, which makes the game to keep the designated area centered around
 `pos` with radius of `radius` loaded for a predefined amount of ticks, defined by `type`. Allowed types
-are `portal`: 300 ticks, `teleport`: 5 ticks, and `unknown`: 1 tick. Radius can be from 1 to 32 ticks.
+are `portal`: 300 ticks, `teleport`: 40 ticks, and `unknown`: 1 tick. Radius can be from 1 to 32 ticks.
 
 This function is tentative - will likely change when chunk ticket API is properly fleshed out.
 
@@ -4301,8 +4301,8 @@ Recipe type can take one of the following options:
  * `'smithing'` - smithing table (1.16+)
  
  The return value is a list of available recipes (even if there is only one recipe available). Each recipe contains of
- an item triple of the crafting result, list of ingredients, each containing a list of possible variants of the
- ingredients in this slot, as item triples, or `null` if its a shaped recipe and a given slot in the patterns is left
+ an item triple of the crafting results as a list of item stacks, list of ingredients, each containing a list of possible variants of the
+ ingredients in this slot, as item ids, or `null` if it is a shaped recipe and a given slot in the patterns is left
  empty, and recipe specification as another list. Possible recipe specs is:
   * `['shaped', width, height]` - shaped crafting. `width` and `height` can be 1, 2 or 3.
   * `['shapeless']` - shapeless crafting
@@ -4310,10 +4310,6 @@ Recipe type can take one of the following options:
   * `['cutting']` - stonecutter recipe
   * `['special']` - special crafting recipe, typically not present in the crafting menu
   * `['custom']` - other recipe types
-  
-Note that ingredients are specified as tripes, with count and nbt information. Currently all recipes require always one
-of the ingredients, and for some recipes, even if the nbt data for the ingredient is specified (e.g. `dispenser`), it
-can accept items of any tags.
 
 Also note that some recipes leave some products in the crafting window, and these can be determined using
  `crafting_remaining_item()` function 
@@ -4328,7 +4324,7 @@ Also note that some recipes leave some products in the crafting window, and thes
 ### `crafting_remaining_item(item)`
 
 returns `null` if the item has no remaining item in the crafting window when used as a crafting ingredient, or an
-item name that serves as a replacement after crafting is done. Currently it can only be buckets and glass bottles.
+item tuple that serves as a replacement after crafting is done. Currently, it can only be buckets and glass bottles.
 
 ### `inventory_size(inventory)`
 
@@ -5347,7 +5343,7 @@ clients will actually be able to receive (they may have more available via resou
 Renders a cloud of particles `name` centered around `pos` position, by default `count` 10 of them, default `speed` 
 of 0, and to all players nearby, but these options can be changed via optional arguments. Follow vanilla `/particle` 
 command on details on those options. Valid particle names are 
-for example `'angry_villager', 'item diamond', 'block stone', 'dust 0.8 0.1 0.1 4'`.
+for example `'angry_villager', 'item diamond', 'block stone', 'dust{"scale": 4, "color": [0.8, 0.1, 0.1]}'`.
 
 Used with no arguments, return the list of available particle names. Note that some of the names do not correspond to a valid
 particle that can be fed to `particle(...)` function due to a fact that some particles need more configuration
@@ -5735,11 +5731,21 @@ Runs a vanilla command from the string result of the `expr` and returns a triple
 intercepted list of output messages, and error message if the command resulted in a failure. 
 Successful commands return `null` as their error.
 
+The command return `null` if the command was not run immediately, but was scheduled for later execution 
+due to being requested while command was executed. This happens most commonly
+when running `run` from a `/script run/invoke` command since that always results in piling up command to run while `script` is being executed.
+
+The mitigation for this is to use `run` in a separate scheduled function, or use `run` in a `tick` event, or literally in 
+any other way than directly from a `/script` command, which will ensure that the command runs immediately.
+
 <pre>
-run('fill 1 1 1 10 10 10 air') -> [0, ["Successfully filled 123 blocks"], null]
-run('give @s stone 4') -> [0, ["Gave 4 [Stone] to gnembon"], null]
-run('seed') -> [0, ["Seed: [4031384495743822299]"], null]
-run('sed') -> [0, [], "sed<--[HERE]"] // wrong command
+run('fill 1 1 1 10 10 10 air') -> [123, ["Successfully filled 123 blocks"], null]
+run('give @s stone 4') -> [1, ["Gave 4 [Stone] to gnembon"], null]
+run('seed') -> [-170661413, [Seed: [4031384495743822299]], null]
+run('sed') -> [-1, [], "sed<--[HERE]"] // wrong command
+
+/script run run('setblock 0 0 0 stone') -> null
+/script run schedule(0, _() -> print(run('setblock 0 0 0 stone'))) -> [1, [Changed the block at 0, 0, 0], null]
 </pre>
 
 ### `save()`

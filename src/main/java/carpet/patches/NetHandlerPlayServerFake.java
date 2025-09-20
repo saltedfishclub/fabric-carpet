@@ -8,7 +8,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.entity.PositionMoveRotation;
+import net.minecraft.world.entity.Relative;
 import java.util.Set;
 
 public class NetHandlerPlayServerFake extends ServerGamePacketListenerImpl
@@ -33,12 +34,12 @@ public class NetHandlerPlayServerFake extends ServerGamePacketListenerImpl
     }
 
     @Override
-    public void teleport(double d, double e, double f, float g, float h, Set<RelativeMovement> set)
+    public void teleport(PositionMoveRotation positionMoveRotation, Set<Relative> set)
     {
-        super.teleport(d, e, f, g, h, set);
-        if (player.serverLevel().getPlayerByUUID(player.getUUID()) != null) {
+        super.teleport(positionMoveRotation, set);
+        if (player.level().getPlayerByUUID(player.getUUID()) != null) {
             resetPosition();
-            player.serverLevel().getChunkSource().move(player);
+            player.level().getChunkSource().move(player);
         }
     }
 
