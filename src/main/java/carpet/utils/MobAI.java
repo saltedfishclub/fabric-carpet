@@ -17,6 +17,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.phys.Vec3;
 
 public class MobAI
@@ -30,7 +31,7 @@ public class MobAI
 
     public static boolean isTracking(Entity e, TrackingType type)
     {
-        if (e.getCommandSenderWorld().isClientSide())
+        if (e.level().isClientSide())
             return false;
         Set<TrackingType> currentTrackers = aiTrackers.get(e.getType());
         if (currentTrackers == null)
@@ -64,7 +65,7 @@ public class MobAI
         {
             types.addAll(type.types);
         }
-        return types.stream().map(t -> source.registryAccess().registryOrThrow(Registries.ENTITY_TYPE).getKey(t).getPath());
+        return types.stream().map(t -> source.registryAccess().lookupOrThrow(Registries.ENTITY_TYPE).getKey(t).getPath());
     }
 
     public static Stream<String> availableFor(EntityType<?> entityType)
@@ -78,8 +79,8 @@ public class MobAI
 
     public enum TrackingType
     {
-        IRON_GOLEM_SPAWNING(Set.of(EntityType.VILLAGER)),
-        BREEDING(Set.of(EntityType.VILLAGER));
+        IRON_GOLEM_SPAWNING(Set.of(EntityTypes.VILLAGER)),
+        BREEDING(Set.of(EntityTypes.VILLAGER));
         public final Set<EntityType<?>> types;
         TrackingType(Set<EntityType<?>> applicableTypes)
         {

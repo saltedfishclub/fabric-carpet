@@ -28,14 +28,15 @@ import java.util.function.Predicate;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntitySpawnRequest;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -107,10 +108,10 @@ public class Entities
                 throw new InternalExpressionException("'spawn' function takes mob name, and position to spawn");
             }
             String entityString = lv.get(0).getString();
-            ResourceLocation entityId;
+            Identifier entityId;
             try
             {
-                entityId = ResourceLocation.read(new StringReader(entityString));
+                entityId = Identifier.read(new StringReader(entityString));
                 EntityType<? extends Entity> type = cc.registry(Registries.ENTITY_TYPE).getOptional(entityId).orElse(null);
                 if (type == null || !type.canSummon())
                 {
@@ -142,17 +143,17 @@ public class Entities
             Vec3 vec3d = position.vec;
 
             ServerLevel serverWorld = cc.level();
-            Entity entity = EntityType.loadEntityRecursive(tag, serverWorld, e -> {
-                e.moveTo(vec3d.x, vec3d.y, vec3d.z, e.getYRot(), e.getXRot());
+            Entity entity = EntityType.loadEntityRecursive(tag, serverWorld, new EntitySpawnRequest(EntitySpawnReason.COMMAND, true), e -> {
+                e.snapTo(vec3d.x, vec3d.y, vec3d.z, e.getYRot(), e.getXRot());
                 return e;
             });
             if (entity == null)
             {
                 return Value.NULL;
             }
-            if (!hasTag && entity instanceof final Mob mob)
+            if (!hasTag && entity instanceof Mob mob)
             {
-                mob.finalizeSpawn(serverWorld, serverWorld.getCurrentDifficultyAt(entity.blockPosition()), MobSpawnType.COMMAND, null);
+                mob.finalizeSpawn(serverWorld, serverWorld.getCurrentDifficultyAt(entity.blockPosition()), EntitySpawnReason.COMMAND, null);
             }
             if (!serverWorld.tryAddFreshEntityWithPassengers(entity))
             {
@@ -177,7 +178,8 @@ public class Entities
             String who = lv.get(0).getString();
             CommandSourceStack source = ((CarpetContext) c).source();
             EntityValue.EntityClassDescriptor eDesc = EntityValue.getEntityDescriptor(who, source.getServer());
-            List<? extends Entity> entityList = source.getLevel().getEntities(eDesc.directType, eDesc.filteringPredicate);
+            @SuppressWarnings("unchecked") // Eclipse's compiler finds an error if the cast isn't there (TODO report to ECJ)
+            List<? extends Entity> entityList = (List<? extends Entity>) source.getLevel().getEntities(eDesc.directType, eDesc.filteringPredicate);
             return ListValue.wrap(entityList.stream().map(EntityValue::new));
         });
 

@@ -40,6 +40,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.commands.PerfCommand;
 import net.minecraft.server.level.ServerPlayer;
 
+import org.jspecify.annotations.Nullable;
+
 public class CarpetServer // static for now - easier to handle all around the code, its one anyways
 {
     public static MinecraftServer minecraft_server;
@@ -160,7 +162,7 @@ public class CarpetServer // static for now - easier to handle all around the co
         LoggerRegistry.playerDisconnected(player);
         extensions.forEach(e -> e.onPlayerLoggedOut(player));
         // first case client, second case server
-        CarpetScriptServer runningScriptServer = (player.getServer() == null) ? scriptServer : Vanilla.MinecraftServer_getScriptServer(player.getServer());
+        CarpetScriptServer runningScriptServer = (player.level().getServer() == null) ? scriptServer : Vanilla.MinecraftServer_getScriptServer(player.level().getServer());
         if (runningScriptServer != null && !runningScriptServer.stopAll) {
             runningScriptServer.onPlayerLoggedOut(player, reason);
         }
@@ -172,7 +174,7 @@ public class CarpetServer // static for now - easier to handle all around the co
         scriptServer = null;
     }
 
-    public static void onServerClosed(MinecraftServer server)
+    public static void onServerClosed(@Nullable MinecraftServer server)
     {
         // this for whatever reason gets called multiple times even when joining on SP
         // so we allow to pass multiple times gating it only on existing server ref
@@ -180,7 +182,7 @@ public class CarpetServer // static for now - easier to handle all around the co
         {
             if (scriptServer != null) scriptServer.onClose();
             // this is a mess, will cleanip onlly when global reference is gone
-            if (!Vanilla.MinecraftServer_getScriptServer(server).stopAll) {
+            if (server != null && !Vanilla.MinecraftServer_getScriptServer(server).stopAll) {
                 Vanilla.MinecraftServer_getScriptServer(server).onClose();
             }
 
@@ -223,15 +225,6 @@ public class CarpetServer // static for now - easier to handle all around the co
     {
         scriptServer.reload(server);
         extensions.forEach(e -> e.onReload(server));
-    }
-    
-    private static final Set<CarpetExtension> warnedOutdatedManagerProviders = new HashSet<>();
-    static void warnOutdatedManager(CarpetExtension ext)
-    {
-        if (warnedOutdatedManagerProviders.add(ext))
-            CarpetSettings.LOG.warn("""
-                    %s is providing a SettingsManager from an outdated method in CarpetExtension!
-                    This behaviour will not work in later Carpet versions and the manager won't be registered!""".formatted(ext.getClass().getName()));
     }
 }
 

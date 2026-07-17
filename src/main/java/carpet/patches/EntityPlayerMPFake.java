@@ -8,9 +8,9 @@ import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.network.protocol.game.ServerboundClientCommandPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
@@ -19,29 +19,38 @@ import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
-import net.minecraft.server.players.GameProfileCache;
+import net.minecraft.server.players.OldUsersConverter;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.food.FoodData;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.SkullBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.portal.DimensionTransition;
+import net.minecraft.world.level.portal.TeleportTransition;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.phys.Vec3;
 import carpet.fakes.ServerPlayerInterface;
 import carpet.utils.Messenger;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @SuppressWarnings("EntityConstructor")
 public class EntityPlayerMPFake extends ServerPlayer
 {
+    private static final Set<String> spawning = new HashSet<>();
+
     public Runnable fixStartingPosition = () -> {};
     public boolean isAShadow;
 
@@ -50,42 +59,58 @@ public class EntityPlayerMPFake extends ServerPlayer
     {
         //prolly half of that crap is not necessary, but it works
         ServerLevel worldIn = server.getLevel(dimensionId);
-        GameProfileCache.setUsesAuthentication(false);
-        GameProfile gameprofile = null;
-        try {
-            if(!username.endsWith(".bot")){
-                gameprofile = server.getProfileCache().get(username).orElse(null); //findByName  .orElse(null)
+        server.services().nameToIdCache().resolveOfflineUsers(false);
+        GameProfile gameprofile;
+        var isUserBot = username.endsWith(".bot");
+
+            UUID uuid = isUserBot ? null : OldUsersConverter.convertMobOwnerIfNecessary(server, username);
+            //NameAndId res = server.services().nameToIdCache().get(username).orElseThrow(); //findByName  .orElse(null)
+            if (uuid == null && (CarpetSettings.allowSpawningOfflinePlayers || isUserBot)) {
+                server.services().nameToIdCache().resolveOfflineUsers(server.isDedicatedServer() && server.usesAuthentication());
+                uuid = UUIDUtil.createOfflinePlayerUUID(username);
             }
-        }
-        finally {
-            GameProfileCache.setUsesAuthentication(server.isDedicatedServer() && server.usesAuthentication());
-        }
-        if (gameprofile == null)
-        {
-            if (!CarpetSettings.allowSpawningOfflinePlayers)
+            if (uuid == null) {
+                return false; // no uuid, no player
+            }
+            gameprofile = new GameProfile(uuid, username);
+
+
+        //GameProfile finalGP = gameprofile;
+
+        // We need to mark this player as spawning so that we do not
+        // try to spawn another player with the name while the profile
+        // is being fetched - preventing multiple players spawning
+        String name = gameprofile.name();
+        spawning.add(name);
+
+        fetchGameProfile(server, gameprofile.id()).whenCompleteAsync((p, t) -> {
+            // Always remove the name, even if exception occurs
+            spawning.remove(name);
+            if (t != null)
             {
-                return false;
-            } else {
-                gameprofile = new GameProfile(UUIDUtil.createOfflinePlayerUUID(username), username);
+                return;
             }
-        }
-        GameProfile finalGP = gameprofile;
-        fetchGameProfile(gameprofile.getName()).thenAcceptAsync(p -> {
-            GameProfile current = finalGP;
-            if (p.isPresent())
-            {
-                current = p.get();
+
+            GameProfile current;
+            if (p.name().isEmpty()) {
+                current = gameprofile;
             }
+            else {
+                current = p;
+            }
+
             EntityPlayerMPFake instance = new EntityPlayerMPFake(server, worldIn, current, ClientInformation.createDefault(), false);
-            instance.fixStartingPosition = () -> instance.moveTo(pos.x, pos.y, pos.z, (float) yaw, (float) pitch);
+            instance.fixStartingPosition = () -> instance.snapTo(pos.x, pos.y, pos.z, (float) yaw, (float) pitch);
             server.getPlayerList().placeNewPlayer(new FakeClientConnection(PacketFlow.SERVERBOUND), instance, new CommonListenerCookie(current, 0, instance.clientInformation(), false));
-            instance.teleportTo(worldIn, pos.x, pos.y, pos.z, (float) yaw, (float) pitch);
+            loadPlayerData(instance);
+            instance.stopRiding(); // otherwise the created fake player will be on the vehicle
+            instance.teleportTo(worldIn, pos.x, pos.y, pos.z, Set.of(), (float) yaw, (float) pitch, true);
             instance.setHealth(20.0F);
             instance.unsetRemoved();
             instance.getAttribute(Attributes.STEP_HEIGHT).setBaseValue(0.6F);
             instance.gameMode.changeGameModeForPlayer(gamemode);
             server.getPlayerList().broadcastAll(new ClientboundRotateHeadPacket(instance, (byte) (instance.yHeadRot * 256 / 360)), dimensionId);//instance.dimension);
-            server.getPlayerList().broadcastAll(new ClientboundTeleportEntityPacket(instance), dimensionId);//instance.dimension);
+            server.getPlayerList().broadcastAll(ClientboundEntityPositionSyncPacket.of(instance), dimensionId);//instance.dimension);
             //instance.world.getChunkManager(). updatePosition(instance);
             instance.entityData.set(DATA_PLAYER_MODE_CUSTOMISATION, (byte) 0x7f); // show all model layers (incl. capes)
             instance.getAbilities().flying = flying;
@@ -93,22 +118,33 @@ public class EntityPlayerMPFake extends ServerPlayer
         return true;
     }
 
-    private static CompletableFuture<Optional<GameProfile>> fetchGameProfile(final String name) {
-        if(name.endsWith(".bot")){
-            return CompletableFuture.completedFuture(Optional.of(new GameProfile(UUIDUtil.createOfflinePlayerUUID(name), name)));
+    private static CompletableFuture<GameProfile> fetchGameProfile(MinecraftServer server, final UUID name) {
+        final ResolvableProfile resolvableProfile = ResolvableProfile.createUnresolved(name);
+        return resolvableProfile.resolveProfile(server.services().profileResolver());
+    }
+
+    private static void loadPlayerData(EntityPlayerMPFake player)
+    {
+        try (ProblemReporter.ScopedCollector scopedCollector = new ProblemReporter.ScopedCollector(player.problemPath(), CarpetSettings.LOG))
+        {
+            Optional<ValueInput> optional = player.level().getServer().getPlayerList().loadPlayerData(player.nameAndId()).map((compoundTag) -> TagValueInput.create(scopedCollector, player.registryAccess(), compoundTag));
+            optional.ifPresent( valueInput -> {
+                player.load(valueInput);
+                player.loadAndSpawnEnderPearls(valueInput);
+                player.loadAndSpawnParentVehicle(valueInput);
+            });
         }
-        return SkullBlockEntity.fetchGameProfile(name);
     }
 
     public static EntityPlayerMPFake createShadow(MinecraftServer server, ServerPlayer player)
     {
-        player.getServer().getPlayerList().remove(player);
         player.connection.disconnect(Component.translatable("multiplayer.disconnect.duplicate_login"));
-        ServerLevel worldIn = player.serverLevel();//.getWorld(player.dimension);
+        ServerLevel worldIn = player.level();//.getWorld(player.dimension);
         GameProfile gameprofile = player.getGameProfile();
         EntityPlayerMPFake playerShadow = new EntityPlayerMPFake(server, worldIn, gameprofile, player.clientInformation(), true);
         playerShadow.setChatSession(player.getChatSession());
         server.getPlayerList().placeNewPlayer(new FakeClientConnection(PacketFlow.SERVERBOUND), playerShadow, new CommonListenerCookie(gameprofile, 0, player.clientInformation(), true));
+        loadPlayerData(playerShadow);
 
         playerShadow.setHealth(player.getHealth());
         playerShadow.connection.teleport(player.getX(), player.getY(), player.getZ(), player.getYRot(), player.getXRot());
@@ -131,10 +167,15 @@ public class EntityPlayerMPFake extends ServerPlayer
         return new EntityPlayerMPFake(server, level, profile, cli, false);
     }
 
+    public static boolean isSpawningPlayer(String username)
+    {
+        return spawning.contains(username);
+    }
+
     private EntityPlayerMPFake(MinecraftServer server, ServerLevel worldIn, GameProfile profile, ClientInformation cli, boolean shadow)
     {
         super(server, worldIn, profile, cli);
-        isAShadow = shadow;
+        this.isAShadow = shadow;
     }
 
     @Override
@@ -144,7 +185,7 @@ public class EntityPlayerMPFake extends ServerPlayer
     }
 
     @Override
-    public void kill()
+    public void kill(ServerLevel level)
     {
         kill(Messenger.s("Killed"));
     }
@@ -156,7 +197,7 @@ public class EntityPlayerMPFake extends ServerPlayer
         if (reason.getContents() instanceof TranslatableContents text && text.getKey().equals("multiplayer.disconnect.duplicate_login")) {
             this.connection.onDisconnect(new DisconnectionDetails(reason));
         } else {
-            this.server.tell(new TickTask(this.server.getTickCount(), () -> {
+            this.level().getServer().schedule(new TickTask(this.level().getServer().getTickCount(), () -> {
                 this.connection.onDisconnect(new DisconnectionDetails(reason));
             }));
         }
@@ -165,10 +206,10 @@ public class EntityPlayerMPFake extends ServerPlayer
     @Override
     public void tick()
     {
-        if (this.getServer().getTickCount() % 10 == 0)
+        if (this.level().getServer().getTickCount() % 10 == 0)
         {
             this.connection.resetPosition();
-            this.serverLevel().getChunkSource().move(this);
+            this.level().getChunkSource().move(this);
         }
         try
         {
@@ -180,8 +221,21 @@ public class EntityPlayerMPFake extends ServerPlayer
             // happens with that paper port thingy - not sure what that would fix, but hey
             // the game not gonna crash violently.
         }
+    }
 
-
+    @Override
+    public boolean startRiding(Entity entityToRide, boolean force, boolean sendEventAndTriggers) {
+        if (super.startRiding(entityToRide, force, sendEventAndTriggers)) {
+            // from ClientPacketListener.handleSetEntityPassengersPacket
+            if (entityToRide instanceof AbstractBoat) {
+                this.yRotO = entityToRide.getYRot();
+                this.setYRot(entityToRide.getYRot());
+                this.setYHeadRot(entityToRide.getYRot());
+            }
+            return true;
+        } else {
+            return false;
+        }
     }
 
     private void shakeOff()
@@ -215,14 +269,9 @@ public class EntityPlayerMPFake extends ServerPlayer
     }
 
     @Override
-    protected void checkFallDamage(double y, boolean onGround, BlockState state, BlockPos pos) {
-        doCheckFallDamage(0.0, y, 0.0, onGround);
-    }
-
-    @Override
-    public Entity changeDimension(DimensionTransition serverLevel)
+    public ServerPlayer teleport(TeleportTransition serverLevel)
     {
-        super.changeDimension(serverLevel);
+        super.teleport(serverLevel);
         if (wonGame) {
             ServerboundClientCommandPacket p = new ServerboundClientCommandPacket(ServerboundClientCommandPacket.Action.PERFORM_RESPAWN);
             connection.handleClientCommand(p);

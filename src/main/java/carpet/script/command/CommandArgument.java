@@ -55,13 +55,12 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import net.minecraft.ChatFormatting;
-import net.minecraft.advancements.AdvancementHolder;
-import net.minecraft.advancements.critereon.MinMaxBounds;
+import net.minecraft.advancements.predicates.MinMaxBounds;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.AngleArgument;
-import net.minecraft.commands.arguments.ColorArgument;
+import net.minecraft.commands.arguments.TeamColorArgument;
 import net.minecraft.commands.arguments.CompoundTagArgument;
 import net.minecraft.commands.arguments.DimensionArgument;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
@@ -74,7 +73,7 @@ import net.minecraft.commands.arguments.ObjectiveCriteriaArgument;
 import net.minecraft.commands.arguments.ParticleArgument;
 import net.minecraft.commands.arguments.RangeArgument;
 import net.minecraft.commands.arguments.ResourceArgument;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.IdentifierArgument;
 import net.minecraft.commands.arguments.ResourceOrTagArgument;
 import net.minecraft.commands.arguments.ScoreHolderArgument;
 import net.minecraft.commands.arguments.ScoreboardSlotArgument;
@@ -99,16 +98,18 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.commands.BossBarCommands;
 import net.minecraft.server.commands.LootCommand;
+import net.minecraft.server.players.NameAndId;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.scores.ScoreHolder;
 
-import javax.annotation.Nullable;
+import net.minecraft.world.scores.TeamColor;
+import org.jspecify.annotations.Nullable;
 
 import static net.minecraft.commands.Commands.argument;
 
@@ -144,10 +145,10 @@ public abstract class CommandArgument
                     (c, p) -> ValueConversions.ofBlockPredicate(c.getSource().getServer().registryAccess(), BlockPredicateArgument.getBlockPredicate(c, p)),
                     param -> (ctx, builder) -> ctx.getArgument(param, BlockPredicateArgument.class).listSuggestions(ctx, builder)
             ),
-            new VanillaUnconfigurableArgument("teamcolor", ColorArgument::color,
+            new VanillaUnconfigurableArgument("teamcolor", TeamColorArgument::teamColor,
                     (c, p) -> {
-                        ChatFormatting format = ColorArgument.getColor(c, p);
-                        return ListValue.of(StringValue.of(format.getName()), ValueConversions.ofRGB(format.getColor()));
+                        TeamColor format = TeamColorArgument.getTeamColor(c, p);
+                        return ListValue.of(StringValue.of(format.getSerializedName()), ValueConversions.ofRGB(format.rgb()));
                     },
                     false
             ),
@@ -163,7 +164,7 @@ public abstract class CommandArgument
                     (c, p) -> StringValue.of(EntityAnchorArgument.getAnchor(c, p).name()), false
             ),
             new VanillaUnconfigurableArgument("entitytype", c -> ResourceArgument.resource(c, Registries.ENTITY_TYPE),
-                    (c, p) -> ValueConversions.of(ResourceArgument.getSummonableEntityType(c, p).key()), SuggestionProviders.SUMMONABLE_ENTITIES
+                    (c, p) -> ValueConversions.of(ResourceArgument.getSummonableEntityType(c, p).key()), SuggestionProviders.cast(SuggestionProviders.SUMMONABLE_ENTITIES)
             ),
             new VanillaUnconfigurableArgument("floatrange", RangeArgument::floatRange,
                     (c, p) -> ValueConversions.of(c.getArgument(p, MinMaxBounds.Doubles.class)), true
@@ -179,7 +180,7 @@ public abstract class CommandArgument
             // item_predicate  ?? //same as item but accepts tags, not sure right now
             new SlotArgument(),
             new VanillaUnconfigurableArgument("item", ItemArgument::item,
-                    (c, p) -> ValueConversions.of(ItemArgument.getItem(c, p).createItemStack(1, false), c.getSource().registryAccess()),
+                    (c, p) -> ValueConversions.of(ItemArgument.getItem(c, p).createItemStack(1), c.getSource().registryAccess()),
                     param -> (ctx, builder) -> ctx.getArgument(param, ItemArgument.class).listSuggestions(ctx, builder)
             ),
             new VanillaUnconfigurableArgument("message", MessageArgument::message,
@@ -199,27 +200,19 @@ public abstract class CommandArgument
             ),
             // operation // not sure if we need it, you have scarpet for that
             new VanillaUnconfigurableArgument("particle", ParticleArgument::particle,
-                    (c, p) -> ValueConversions.of(ParticleArgument.getParticle(c, p), c.getSource().registryAccess()), (c, b) -> SharedSuggestionProvider.suggestResource(c.getSource().getServer().registryAccess().registryOrThrow(Registries.PARTICLE_TYPE).keySet(), b)
+                    (c, p) -> ValueConversions.of(ParticleArgument.getParticle(c, p), c.getSource().registryAccess()), (c, b) -> SharedSuggestionProvider.suggestResource(c.getSource().getServer().registryAccess().lookupOrThrow(Registries.PARTICLE_TYPE).keySet(), b)
             ),
 
             // resource / identifier section
 
-            new VanillaUnconfigurableArgument("recipe", ResourceLocationArgument::id,
-                    (c, p) -> ValueConversions.of(ResourceLocationArgument.getRecipe(c, p).id()), SuggestionProviders.ALL_RECIPES
-            ),
-            new VanillaUnconfigurableArgument("advancement", ResourceLocationArgument::id,
-                    (c, p) -> ValueConversions.of(ResourceLocationArgument.getAdvancement(c, p).id()), (ctx, builder) -> SharedSuggestionProvider.suggestResource(ctx.getSource().getServer().getAdvancements().getAllAdvancements().stream().map(AdvancementHolder::id), builder)
-            ),
-            new VanillaUnconfigurableArgument("lootcondition", ResourceLocationArgument::id,
-                    (c, p) -> ValueConversions.of(ResourceLocationArgument.getId(c, p)), (ctx, builder) -> SharedSuggestionProvider.suggestResource(ctx.getSource().getServer().reloadableRegistries().getKeys(Registries.LOOT_CONDITION_TYPE), builder)
-            ),
-            new VanillaUnconfigurableArgument("loottable", ResourceLocationArgument::id,
-                    (c, p) -> ValueConversions.of(ResourceLocationArgument.getId(c, p)), LootCommand.SUGGEST_LOOT_TABLE
-            ),
+            new VanillaUnconfigurableArgument("recipe", Registries.RECIPE),
+            new VanillaUnconfigurableArgument("advancement", Registries.ADVANCEMENT),
+            new VanillaUnconfigurableArgument("lootcondition", Registries.LOOT_CONDITION_TYPE),
+            new VanillaUnconfigurableArgument("loottable", Registries.LOOT_TABLE),
             new VanillaUnconfigurableArgument("attribute", Registries.ATTRIBUTE),
 
-            new VanillaUnconfigurableArgument("boss", ResourceLocationArgument::id,
-                    (c, p) -> ValueConversions.of(ResourceLocationArgument.getId(c, p)), BossBarCommands.SUGGEST_BOSS_BAR
+            new VanillaUnconfigurableArgument("boss", IdentifierArgument::id,
+                    (c, p) -> ValueConversions.of(IdentifierArgument.getId(c, p)), BossBarCommands.SUGGEST_BOSS_BAR
             ),
 
             new VanillaUnconfigurableArgument("biome", c -> ResourceOrTagArgument.resourceOrTag(c, Registries.BIOME),
@@ -235,13 +228,13 @@ public abstract class CommandArgument
                             return ValueConversions.of(res.right().get().key());
                         }
                         return Value.NULL;
-                    }, (ctx, builder) -> SharedSuggestionProvider.suggestResource(ctx.getSource().getServer().registryAccess().registryOrThrow(Registries.BIOME).keySet(), builder)
+                    }, (ctx, builder) -> SharedSuggestionProvider.suggestResource(ctx.getSource().getServer().registryAccess().lookupOrThrow(Registries.BIOME).keySet(), builder)
             ),
-            new VanillaUnconfigurableArgument("sound", ResourceLocationArgument::id,
-                    (c, p) -> ValueConversions.of(ResourceLocationArgument.getId(c, p)), SuggestionProviders.AVAILABLE_SOUNDS
+            new VanillaUnconfigurableArgument("sound", IdentifierArgument::id,
+                    (c, p) -> ValueConversions.of(IdentifierArgument.getId(c, p)), SuggestionProviders.cast(SuggestionProviders.AVAILABLE_SOUNDS)
             ),
-            new VanillaUnconfigurableArgument("storekey", ResourceLocationArgument::id,
-                    (c, p) -> ValueConversions.of(ResourceLocationArgument.getId(c, p)), (ctx, builder) -> SharedSuggestionProvider.suggestResource(ctx.getSource().getServer().getCommandStorage().keys(), builder)
+            new VanillaUnconfigurableArgument("storekey", IdentifierArgument::id,
+                    (c, p) -> ValueConversions.of(IdentifierArgument.getId(c, p)), (ctx, builder) -> SharedSuggestionProvider.suggestResource(ctx.getSource().getServer().getCommandStorage().keys(), builder)
             ),
 
             // default
@@ -727,10 +720,10 @@ public abstract class CommandArgument
         @Override
         protected Value getValueFromContext(CommandContext<CommandSourceStack> context, String param) throws CommandSyntaxException
         {
-            Collection<GameProfile> profiles = GameProfileArgument.getGameProfiles(context, param);
+            Collection<NameAndId> profiles = GameProfileArgument.getGameProfiles(context, param);
             if (!single)
             {
-                return ListValue.wrap(profiles.stream().map(p -> StringValue.of(p.getName())));
+                return ListValue.wrap(profiles.stream().map(p -> StringValue.of(p.name())));
             }
             int size = profiles.size();
             if (size == 0)
@@ -739,7 +732,7 @@ public abstract class CommandArgument
             }
             if (size == 1)
             {
-                return StringValue.of(profiles.iterator().next().getName());
+                return StringValue.of(profiles.iterator().next().name());
             }
             throw new SimpleCommandExceptionType(Component.literal("Multiple game profiles returned while only one was requested" + " for custom type " + suffix)).create();
         }
@@ -849,7 +842,7 @@ public abstract class CommandArgument
 
     private static class CustomIdentifierArgument extends CommandArgument
     {
-        Set<ResourceLocation> validOptions = Collections.emptySet();
+        Set<Identifier> validOptions = Collections.emptySet();
 
         protected CustomIdentifierArgument()
         {
@@ -859,13 +852,13 @@ public abstract class CommandArgument
         @Override
         protected ArgumentType<?> getArgumentType(CarpetScriptHost host)
         {
-            return ResourceLocationArgument.id();
+            return IdentifierArgument.id();
         }
 
         @Override
         protected Value getValueFromContext(CommandContext<CommandSourceStack> context, String param) throws CommandSyntaxException
         {
-            ResourceLocation choseValue = ResourceLocationArgument.getId(context, param);
+            Identifier choseValue = IdentifierArgument.getId(context, param);
             if (!validOptions.isEmpty() && !validOptions.contains(choseValue))
             {
                 throw new SimpleCommandExceptionType(Component.literal("Incorrect value for " + param + ": " + choseValue + " for custom type " + suffix)).create();
@@ -890,7 +883,7 @@ public abstract class CommandArgument
                 {
                     throw error("Custom sting type requires options passed as a list" + " for custom type " + suffix);
                 }
-                validOptions = ((ListValue) optionsValue).getItems().stream().map(v -> ResourceLocation.parse(v.getString())).collect(Collectors.toSet());
+                validOptions = ((ListValue) optionsValue).getItems().stream().map(v -> Identifier.parse(v.getString())).collect(Collectors.toSet());
             }
         }
     }
@@ -1278,7 +1271,7 @@ public abstract class CommandArgument
                     suffix,
                     c -> ResourceArgument.resource(c, registry),
                     (c, p) -> ValueConversions.of(ResourceArgument.getResource(c, p, registry).key()),
-                    (c, b) -> SharedSuggestionProvider.suggestResource(c.getSource().getServer().registryAccess().registryOrThrow(registry).keySet(), b)
+                    (c, b) -> SharedSuggestionProvider.suggestResource(c.getSource().getServer().registryAccess().lookupOrThrow(registry).keySet(), b)
             );
         }
 
