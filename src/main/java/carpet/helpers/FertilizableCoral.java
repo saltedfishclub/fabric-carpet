@@ -1,27 +1,34 @@
 package carpet.helpers;
 
-import carpet.fakes.CoralFeatureInterface;
+import carpet.script.utils.FeatureGenerator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.data.worldgen.placement.PlacementUtils;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
+import net.minecraft.util.valueproviders.UniformInt;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.BaseCoralPlantTypeBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.BonemealSource;
 import net.minecraft.world.level.block.BonemealableBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.feature.CoralClawFeature;
-import net.minecraft.world.level.levelgen.feature.CoralFeature;
-import net.minecraft.world.level.levelgen.feature.CoralMushroomFeature;
 import net.minecraft.world.level.levelgen.feature.CoralTreeFeature;
-import net.minecraft.world.level.levelgen.feature.configurations.NoneFeatureConfiguration;
+import net.minecraft.world.level.levelgen.feature.CuboidPlacement;
+import net.minecraft.world.level.levelgen.feature.Feature;
+import net.minecraft.world.level.levelgen.feature.SimpleRandomSelectorFeature;
+import net.minecraft.world.level.levelgen.placement.OffsetPlacement;
+import net.minecraft.world.level.levelgen.placement.RandomChancePlacement;
 import net.minecraft.world.level.material.MapColor;
+
+import java.util.stream.Stream;
 
 /**
  * Deduplicates logic for the different behaviors of the {@code renewableCoral} rule
@@ -33,7 +40,7 @@ public interface FertilizableCoral extends BonemealableBlock {
     boolean isEnabled();
 
     @Override
-    public default boolean isValidBonemealTarget(LevelReader world, BlockPos pos, BlockState state)
+    public default boolean isValidBonemealTarget(LevelReader world, BlockPos pos, BlockState state, BonemealSource bonemealSource)
     {
         return isEnabled()
                 && state.getValue(BaseCoralPlantTypeBlock.WATERLOGGED)
@@ -41,23 +48,17 @@ public interface FertilizableCoral extends BonemealableBlock {
     }
 
     @Override
-    public default boolean isBonemealSuccess(Level world, RandomSource random, BlockPos pos, BlockState state)
+    public default boolean isBonemealSuccess(Level world, RandomSource random, BlockPos pos, BlockState state, BonemealSource bonemealSource)
     {
         return random.nextFloat() < 0.15D;
     }
 
     @Override
-    public default void performBonemeal(ServerLevel worldIn, RandomSource random, BlockPos pos, BlockState blockUnder)
+    public default void performBonemeal(ServerLevel worldIn, RandomSource random, BlockPos pos, BlockState blockUnder, BonemealSource bonemealSource)
     {
-        int variant = random.nextInt(3);
-        CoralFeature coral = switch (variant) {
-            case 0 -> new CoralClawFeature(NoneFeatureConfiguration.CODEC);
-            case 1 -> new CoralTreeFeature(NoneFeatureConfiguration.CODEC);
-            default -> new CoralMushroomFeature(NoneFeatureConfiguration.CODEC);
-        };
-
         MapColor color = blockUnder.getMapColor(worldIn, pos);
         BlockState properBlock = blockUnder;
+        var blocks = worldIn.registryAccess().lookupOrThrow(Registries.BLOCK);
         HolderSet.Named<Block> coralBlocks = worldIn.registryAccess().lookupOrThrow(Registries.BLOCK).get(BlockTags.CORAL_BLOCKS).orElseThrow();
         for (Holder<Block> block: coralBlocks)
         {
@@ -67,9 +68,36 @@ public interface FertilizableCoral extends BonemealableBlock {
                 break;
             }
         }
+        Block actualProperBlock = properBlock.getBlock();
+
         worldIn.setBlock(pos, Blocks.WATER.defaultBlockState(), Block.UPDATE_NONE);
 
-        if (!((CoralFeatureInterface)coral).growSpecific(worldIn, random, pos, properBlock))
+        var features = worldIn.registryAccess().lookupOrThrow(Registries.FEATURE);
+        Feature feature = new SimpleRandomSelectorFeature( HolderSet.direct(Stream.of(actualProperBlock)
+                .map(block -> FeatureGenerator.coral(features, blocks, actualProperBlock))
+                .flatMap(
+                        coralType -> Stream.of(
+                                PlacementUtils.inlinePlaced(new CoralTreeFeature(
+                                        PlacementUtils.inlinePlaced(coralType, FeatureGenerator.coralPlacement))
+                                ),
+                                PlacementUtils.inlinePlaced(new CoralClawFeature(
+                                        PlacementUtils.inlinePlaced(coralType, FeatureGenerator.coralPlacement))),
+                                PlacementUtils.inlinePlaced(
+                                        coralType,
+                                        OffsetPlacement.vertical(UniformInt.of(-3, -1)),
+                                        new CuboidPlacement(
+                                                UniformInt.of(3, 5),
+                                                UniformInt.of(3, 5),
+                                                false,
+                                                false
+                                        ),
+                                        new RandomChancePlacement(0.9f),
+                                        FeatureGenerator.coralPlacement
+                                )
+                        )
+                ).toList())
+        );
+        if (!feature.place(worldIn, worldIn.getChunkSource().getGenerator(), random, pos))
         {
             worldIn.setBlock(pos, blockUnder, 3);
         }

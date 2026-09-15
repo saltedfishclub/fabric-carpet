@@ -424,7 +424,7 @@ public class Auxiliary
             armorstand.setHeadPose(new Rotations((int) pointLocator.pitch, 0, 0));
             armorstand.setNoGravity(true);
             armorstand.setInvisible(true);
-            armorstand.setInvulnerable(true);
+            armorstand.setPermanentlyInvulnerable(true);
             armorstand.getEntityData().set(ArmorStand.DATA_CLIENT_FLAGS, (byte) (interactable ? 8 : 16 | 8));
             level.addFreshEntity(armorstand);
             return new EntityValue(armorstand);
@@ -857,11 +857,11 @@ public class Auxiliary
                 plopData.put(StringValue.of("scarpet_custom"),
                         ListValue.wrap(FeatureGenerator.featureMap.keySet().stream().sorted().map(StringValue::of))
                 );
+                plopData.put(StringValue.of("feature_types"),
+                        ListValue.wrap(cc.registry(Registries.FEATURE_TYPE).keySet().stream().sorted().map(ValueConversions::of))
+                );
                 plopData.put(StringValue.of("features"),
                         ListValue.wrap(cc.registry(Registries.FEATURE).keySet().stream().sorted().map(ValueConversions::of))
-                );
-                plopData.put(StringValue.of("configured_features"),
-                        ListValue.wrap(cc.registry(Registries.CONFIGURED_FEATURE).keySet().stream().sorted().map(ValueConversions::of))
                 );
                 plopData.put(StringValue.of("structure_types"),
                         ListValue.wrap(cc.registry(Registries.STRUCTURE_TYPE).keySet().stream().sorted().map(ValueConversions::of))

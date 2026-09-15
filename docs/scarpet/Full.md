@@ -2869,7 +2869,7 @@ On top of that, scarpet provides the following list of noises sampled directly f
 
 `'barrier_noise'`, `'fluid_level_floodedness_noise'`, `'fluid_level_spread_noise'`, `'lava_noise'`,
 `'temperature'`, `'vegetation'`, `'continents'`, `'erosion'`, `'depth'`, `'ridges'`, 
-`'preliminary_surface_level'`, `'final_density'`, `'vein_toggle'`, `'vein_ridged'` and `'vein_gap'`
+`'preliminary_surface_level'`, `'final_density'`
 
 <pre>
 // requesting single value
@@ -2966,7 +2966,7 @@ with minecraft 1.16.1 and below or 1.16.2 and above since in 1.16.2 Mojang has a
 meaning that since 1.16.2 - they have official names that can be used by datapacks and scarpet. If you have most recent
 scarpet on 1.16.4, you can use `plop()` to get all available worldgen features including custom features and structures
 controlled by datapacks. It returns a map of lists in the following categories: 
-`'scarpet_custom'`, `'configured_features'`, `'structures'`, `'features'`, `'structure_types'`
+`'scarpet_custom'`, `'features'`, `'structures'`, `'feature_types'`, `'structure_types'`
 
 ### Previous Structure Names, including variants (for MC1.16.1 and below only)
 *   `'monument'`: Ocean Monument. Generates at fixed Y coordinate, surrounds itself with water.
@@ -3065,7 +3065,7 @@ controlled by datapacks. It returns a map of lists in the following categories:
 
 ### World Generation Features and Structures (as of MC1.16.2+)
 
-Use `plop():'structure_types'`, `plop():'structures'`, `plop():'features'`, and `plop():'configured_features'` for a list of available options. Your output may vary based on
+Use `plop():'structure_types'`, `plop():'structures'`, `plop():'features'`, and `plop():'feature_types'` for a list of available options. Your output may vary based on
 datapacks installed in your world.
 
 ### Custom Scarpet Features
