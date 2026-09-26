@@ -25,6 +25,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ColumnPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
+import net.minecraft.util.ARGB;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -60,6 +61,7 @@ import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.StreamSupport;
 
+import org.joml.Vector3fc;
 import org.jspecify.annotations.Nullable;
 
 public class ValueConversions
@@ -140,11 +142,16 @@ public class ValueConversions
         return new NumericValue(value * 256 + 255);
     }
 
+    public static Value ofRGB(Vector3fc value)
+    {
+        return new NumericValue(ARGB.colorFromVector3f(value));
+    }
+
     public static Level dimFromValue(Value dimensionValue, MinecraftServer server)
     {
-        if (dimensionValue instanceof EntityValue)
+        if (dimensionValue instanceof final EntityValue entityValue)
         {
-            return ((EntityValue) dimensionValue).getEntity().level();
+            return entityValue.getEntity().level();
         }
         else if (dimensionValue instanceof BlockValue bv)
         {
@@ -168,7 +175,7 @@ public class ValueConversions
                     ResourceKey<Level> dim = null;
                     Identifier id = Identifier.parse(dimString);
                     // not using RegistryKey.of since that one creates on check
-                    for (ResourceKey<Level> world : (server.levelKeys()))
+                    for (ResourceKey<Level> world : server.levelKeys())
                     {
                         if (id.equals(world.identifier()))
                         {
@@ -412,6 +419,7 @@ public class ValueConversions
         }
     }
 
+    @SuppressWarnings("DoubleBraceInitialization")
     private static final Int2ObjectMap<SlotParam> slotIdsToSlotParams = new Int2ObjectOpenHashMap<>()
     {{
         int n;

@@ -20,9 +20,11 @@ import net.minecraft.world.attribute.EnvironmentAttribute;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.feature.Feature;
+import org.joml.Vector3fc;
 
 public class BiomeInfo
 {
+    @SuppressWarnings("DoubleBraceInitialization")
     public static final Map<String, BiFunction<ServerLevel, Biome, Value>> biomeFeatures = new HashMap<>()
     {{
         put("tags", (w, b) -> ListValue.wrap(w.registryAccess().lookupOrThrow(Registries.BIOME).getTags().filter(p -> p.stream().anyMatch(h -> h.value() == b)).map(ValueConversions::of)));
@@ -47,7 +49,7 @@ public class BiomeInfo
         });
     }};
 
-    private static  Value fromEnvironmentalAttribute(ServerLevel w, Biome b, EnvironmentAttribute<Integer> fogColor) {
+    private static  Value fromEnvironmentalAttribute(ServerLevel w, Biome b, EnvironmentAttribute<Vector3fc> fogColor) {
         return ValueConversions.ofRGB(b.getAttributes().applyModifier(fogColor, w.dimensionType().attributes().applyModifier(fogColor, fogColor.defaultValue())));
     }
 }
